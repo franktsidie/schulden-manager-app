@@ -170,7 +170,7 @@ async function key(p,s){const m=await crypto.subtle.importKey('raw',TE.encode(p)
 async function enc(x,p){const s=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),c=await crypto.subtle.encrypt({name:'AES-GCM',iv},await key(p,s),TE.encode(x));return JSON.stringify({enc:1,s:B(s),iv:B(iv),d:B(c)})}
 async function dec(j,p){const o=JSON.parse(j);if(!o.enc)return j;return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:U(o.iv)},await key(p,U(o.s)),U(o.d)))}
 const ghU=()=>'https://api.github.com/repos/'+GC.repo+'/contents/'+encodeURIComponent(GC.file||'schulden-backup.json'),ghH=()=>({Authorization:'Bearer '+GC.tok,Accept:'application/vnd.github+json'});
-async function ghGet(){const r=await fetch(ghU(),{headers:ghH()});if(r.status==404)return null;if(!r.ok)throw r.status;const j=await r.json();return{sha:j.sha,txt:new TextDecoder().decode(U(j.content.replace(/\n/g,'')))}}
+async function ghGet(){const r=await fetch(ghU(),{headers:ghH()});if(r.status==404)return null;if(!r.ok)throw r.status;const j=await r.json();return{sha:j.sha,txt:new TextDecoder().decode(U(j.content.replace(/\s/g,'')))}}
 const ghRead=async c=>JSON.parse(GC.enc?await dec(c.txt,GC.enc):c.txt);
 async function ghPush(){const cur=await ghGet();let x=JSON.stringify({ts:S.ts,people:S.people,debts:S.debts});
 if(cur){try{if((await ghRead(cur)).ts>S.ts&&!confirm(t('ghNew')))return 1}catch(e){}}
