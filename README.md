@@ -1,4 +1,4 @@
-# Schulden-Manager · Version 4
+# Schulden-Manager · Version 5
 
 App: https://franktsidie.github.io/schulden-manager-app/
 
@@ -41,3 +41,13 @@ Regelmäßig Backups außerhalb des Browsers speichern und deren Wiederherstellu
 - Nach einem Update online öffnen, schließen und erneut öffnen bzw. neu laden. Browserdaten nicht löschen.
 
 Der Service Worker speichert eine vollständige Version für Offline-Nutzung. Bei Quelländerungen den Cache-Namen in sw.js ändern. Website und Daten-Repository getrennt halten; keine Backups oder Tokens in den App-Code aufnehmen.
+
+## Einfache Anmeldung und Samsung Pass
+
+Unter Einstellungen → Anmeldung einrichten einen Benutzernamen oder eine E-Mail-Adresse eintragen und Benutzernamen speichern wählen. Ein bestehendes Passwort bleibt erhalten. Zum ersten Einrichten Benutzername und Passwort mit Wiederholung angeben. Bei einem alten geschützten Datensatz ohne Benutzernamen ist das bisherige Entsperren weiterhin möglich; beim erfolgreichen Anmelden kann der Benutzername ergänzt werden.
+
+Das Anmeldeformular verwendet name="username", autocomplete="username", name="password", autocomplete="current-password" und einen echten Submit-Button. Neue Passwörter verwenden autocomplete="new-password". Auch automatisch ausgefüllte Werte ohne Eingabe-Ereignis werden direkt aus dem Formular gelesen. Zugangsdaten werden beim Absenden nicht an einen Server gesendet.
+
+Auf dem Galaxy die Website in Samsung Internet öffnen, mit Benutzername und Passwort anmelden und die angebotene Speicherung in Samsung Pass bestätigen. Ob die Speicherung angeboten wird, hängt von Browser-, Geräte- und Samsung-Pass-Einstellungen ab. Der Ablauf mit Samsung Pass wurde nicht auf einem echten Galaxy-Gerät geprüft.
+
+Es bleibt ein lokaler Datensatz je Browserprofil. Der Benutzername wird auf dem Gerät auch als Autofill-Hinweis gespeichert; er ist kein Online-Konto. Kein zusätzlicher Anmeldedienst und keine Passwort-Rücksetzungs-Mail. Die verschlüsselten Daten benötigen weiterhin das passende lokale Passwort oder ein lesbares Backup.

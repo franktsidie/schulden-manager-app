@@ -52,6 +52,17 @@ Object.assign(T, {
   importSize:['Die Datei ist zu groß (maximal 20 MB).','File is too large (20 MB maximum).','Fichier trop volumineux (20 Mo maximum).']
 });
 Object.assign(T,{direction:['Richtung','Direction','Sens'],chargeMode:['Zinsaufschlag','Interest charge','Intérêts à ajouter'],saveAccess:['Zugangsdaten übernehmen','Save access settings','Enregistrer les accès']});
+Object.assign(T,{
+  bad:['Benutzername oder Passwort stimmt nicht.','Username or password is incorrect.','Nom d’utilisateur ou mot de passe incorrect.'],
+  username:['Benutzername oder E-Mail','Username or email','Nom d’utilisateur ou e-mail'],
+  usernameError:['Bitte einen Benutzernamen mit 1 bis 100 Zeichen angeben.','Enter a username between 1 and 100 characters.','Indiquez un nom d’utilisateur de 1 à 100 caractères.'],
+  usernameSave:['Benutzernamen speichern','Save username','Enregistrer le nom d’utilisateur'],
+  login:['Anmelden','Sign in','Se connecter'],
+  loginSetup:['Anmeldung einrichten','Set up sign-in','Configurer la connexion'],
+  usernameHint:['Dein Benutzername gilt für diesen lokalen Datensatz und wird auf diesem Gerät gespeichert.','Your username identifies this local dataset and is saved on this device.','Votre nom d’utilisateur identifie ces données locales et est enregistré sur cet appareil.'],
+  legacyUsername:['Bestehender Datensatz: Du kannst beim Anmelden einen Benutzernamen ergänzen oder ihn später in den Einstellungen speichern.','Existing dataset: add a username when signing in, or save one later in Settings.','Données existantes : ajoutez un nom lors de la connexion ou plus tard dans les réglages.'],
+  version:['Version 5 · Anmeldung & Autofill','Version 5 · sign-in & autofill','Version 5 · connexion et remplissage automatique']
+});
 const C=Ledger, LC=['de-DE','en-GB','fr-FR'], $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const t=k=>(T[k]||[k,k,k])[L], uid=()=>crypto.randomUUID(), clone=C.clone;
@@ -63,19 +74,22 @@ const dt=n=>n?new Date(n).toLocaleString(LC[L]):t('never');
 const inputMoney=n=>(n/100).toFixed(2).replace('.',L===1?'.':',');
 const bal=C.balance, st=d=>C.status(d,today(),in7()), per=id=>S.people.find(p=>p.id===id), dbt=()=>S.debts.find(d=>d.id===V.id), purpose=d=>T[d.purpose]?t(d.purpose):d.purpose;
 const KEY='sm-vault', empty=()=>({state:{people:[],debts:[],ts:0,lang:0,setup:false,pw:null},settings:{},undo:null,backups:[],backupAt:0,bases:{}});
-let P=empty(),S=P.state,L=0,V={v:'home'},GC={},secret='',locked=false,encrypted=false,busy=false,message='',failure='',disk=null,lockAfter=false,configDirty=false;
+let P=empty(),S=P.state,L=0,V={v:'home'},GC={},secret='',locked=false,encrypted=false,busy=false,message='',failure='',disk=null,lockAfter=false,configDirty=false,knownUsername='';
+function username(value,required=true){const name=String(value??'').trim();if((required&&!name)||name.length>100||/[\u0000-\u001f\u007f]/.test(name))throw Error('usernameError');return name;}
+const sameUsername=(a,b)=>a.toLocaleLowerCase('en-US')===b.toLocaleLowerCase('en-US');
 function sync(){S=P.state;L=Number.isInteger(S.lang)&&S.lang>=0&&S.lang<=2?S.lang:0;GC=P.settings||{};}
 function storageValue(){try{return localStorage.getItem(KEY);}catch(e){throw Error('storageError');}}
 async function write(next=P,password=secret){
   if(storageValue()!==disk)throw Error('concurrent');
   const body=clone(next);
   if(!password){body.settings={repo:GC.repo||body.settings.repo||'',file:GC.file||body.settings.file||''};}
-  const record={version:4,...(password?{encrypted:true,payload:await C.encrypt(JSON.stringify(body),password)}:{encrypted:false,data:body})};
+  const record={version:4,username:username(body.state.username||'',false),...(password?{encrypted:true,payload:await C.encrypt(JSON.stringify(body),password)}:{encrypted:false,data:body})};
   const value=JSON.stringify(record);
   // Recheck after PBKDF2; Web Locks serializes writers across supported tabs.
   const persist=()=>{if(storageValue()!==disk)throw Error('concurrent');try{localStorage.setItem(KEY,value);if(localStorage.getItem(KEY)!==value)throw Error();}catch(e){throw Error('storageError');}disk=value;};
   if(navigator.locks)await navigator.locks.request('schulden-manager-vault',persist);else persist();
   encrypted=!!password;
+  knownUsername=record.username;
   try{localStorage.removeItem('sm');localStorage.removeItem('smgh');}catch(e){/* The verified new record remains authoritative. */}
 }
 function dataState(){return {people:clone(S.people),debts:clone(S.debts),ts:S.ts};}
@@ -116,8 +130,9 @@ function channels(f){return `${select('ch',t('ch'),['cash','pp','bank','combo'].
 function editDebtView(){const f=V.f;return `${back()}<h1>${t(V.id?'edit':'nd')}</h1>${select('dir',t('direction'),[['1',t('give')],['-1',t('get')]],f.dir)}${select('pid',t('person'),[...S.people.map(p=>[p.id,p.name]),['new',t('np')]],f.pid)}${f.pid==='new'?field('name',t('name'),f.name,'text','maxlength="200"'):''}${field('purpose',t('why'),f.purpose,'text','maxlength="200" list="purpose-list"')}<datalist id="purpose-list">${['bike','food','rent','lic'].map(k=>`<option value="${esc(t(k))}">`).join('')}</datalist><div class="s">${moneyField('amt',t('amt'),f.amt)}${moneyField('rate',t('rateAnnual'),f.rate)}</div><span class="m">${t('interestHint')}</span>${channels(f)}<div class="s">${field('date',t('date'),f.date,'date')}${field('due',t('dueBy'),f.due,'date')}</div>${field('note',t('note'),f.note,'text','maxlength="2000"')}${V.id?`<span class="m">${t('editHint')}</span>`:''}${button('saveDebt',t('save'),'','b')}`;}
 function eventView(){const f=V.f;return `${back()}<h1>${t(V.eid?'edit':V.kind==='pay'?'pay':'int')}</h1>${V.kind!=='pay'&&!V.eid?select('mode',t('chargeMode'),[['fix',t('fix')],['pct',t('pct')]],f.mode||'fix'):''}${moneyField('amt',V.kind!=='pay'&&f.mode==='pct'?t('pct'):t('amt'),f.amt)}${V.kind==='pay'?channels(f):''}${field('date',t('date'),f.date,'date')}${field('note',t('note'),f.note,'text','maxlength="2000"')}${V.eid?`<span class="m">${t('editHint')}</span>`:''}${button('saveEvent',t('save'),'','b')}${V.eid?button('deleteEvent',t('remove')):''}`;}
 function postponeView(){const f=V.f;return `${back()}<h1>${t('post')}</h1><div class="w">${[1,2,3].map(m=>button('months','+'+m+' '+t('mon'),`data-months="${m}"`,'q')).join('')}</div>${field('due',t('nf'),f.due,'date')}${select('mode',t('late'),[['fix',t('fix')],['pct',t('pct')]],f.mode||'fix')}${moneyField('amt',f.mode==='pct'?t('pct'):t('late')+' (€)',f.amt)}${field('note',t('note'),f.note,'text','maxlength="2000"')}${button('savePost',t('save'),'','b')}`;}
-function settings(){return `<h1>${t('set')}</h1><div class="c"><h2>${t('lang')}</h2><div class="w">${['Deutsch','English','Français'].map((l,i)=>button('language',l,`data-lang="${i}"`,'q '+(L===i?'qa':''))).join('')}</div></div><div class="c"><h2>${t('pw')}</h2><span class="${encrypted?'g':'y'}">${t(encrypted?'protected':S.pw?'legacy':'unprotected')}</span><span class="m">${t('passwordHelp')}</span>${field('password',t(encrypted?'chpw':'setpw'),'','password','autocomplete="new-password"')}${field('repeat',t('repeat'),'','password','autocomplete="new-password"')}${button('password',t(encrypted?'chpw':'setpw'))}${encrypted||S.pw?button('lock',t('lock')):''}</div>${backupStatus()}<div class="c"><h2>${t('exp')}</h2><label class="f"><span class="m">${t('backupPassword')}</span><input class="i" type="password" data-g="enc" value="${esc(GC.enc||'')}" autocomplete="off"></label><span class="m">${t('plainBackup')}</span><span class="m">${t('backupNote')}</span><div class="s">${button('export',t('expb'))}${button('csv',t('expc'))}</div>${button('import',t('imp'))}${button('share',t('share'))}<input type="file" id="import-file" accept=".json,application/json" hidden></div><div class="c"><h2>${t('gh')}</h2><span class="m">${t('ghHelp')}</span><span class="m">${t('ghPrivate')}</span><label class="f"><span class="m">${t('ghTok')}</span><input class="i" type="password" data-g="tok" value="${esc(GC.tok||'')}" autocomplete="off"></label><label class="f"><span class="m">${t('ghRepo')}</span><input class="i" data-g="repo" value="${esc(GC.repo||'')}" placeholder="Besitzer/Repository" autocomplete="off"></label><label class="f"><span class="m">${t('ghFile')}</span><input class="i" data-g="file" value="${esc(GC.file||'schulden-backup.json')}" autocomplete="off"></label><div class="s">${button('ghup',t('up'))}${button('ghdn',t('dn'))}</div>${button('saveAccess',t('saveAccess'))}</div>${P.backups.length?`<div class="c"><h2>${t('recovery')}</h2>${P.backups.map(r=>`<div class="history"><div><b>${esc(t(r.label))}</b><span class="m">${esc(dt(r.at))}</span></div><div class="w">${button('recoveryExport',t('export'),`data-rid="${r.id}"`,'q')}${button('recoveryRestore',t('restore'),`data-rid="${r.id}"`,'q')}${button('recoveryDelete',t('remove'),`data-rid="${r.id}"`,'q')}</div></div>`).join('')}</div>`:''}<span class="m">${t('version')}</span>`;}
-function lockView(){const initial=!S.setup&&!encrypted;return `<h1>Schulden-Manager</h1><div class="w">${['DE','EN','FR'].map((x,i)=>button('lockLanguage',x,`data-lang="${i}"`,'q')).join('')}</div><div class="c"><p>${t(initial?'setupHelp':encrypted?'lockHelp':'legacy')}</p>${field('password',t('pw'),'','password',`autocomplete="${initial?'new-password':'current-password'}"`)}${initial?field('repeat',t('repeat'),'','password','autocomplete="new-password"'):''}${initial?`<span class="m">${t('passwordHelp')}</span>`:''}${button(initial?'setupPassword':'unlock',t(initial?'setpw':'unl'),'','b')}${initial?button('skip',t('skip')):''}</div>`;}
+function settings(){return `<h1>${t('set')}</h1><div class="c"><h2>${t('lang')}</h2><div class="w">${['Deutsch','English','Français'].map((l,i)=>button('language',l,`data-lang="${i}"`,'q '+(L===i?'qa':''))).join('')}</div></div><div class="c"><h2>${t('loginSetup')}</h2><span class="${encrypted?'g':'y'}">${t(encrypted?'protected':S.pw?'legacy':'unprotected')}</span><span class="m">${t('passwordHelp')}</span><form id="credentials-form" method="post" autocomplete="on">${field('username',t('username'),S.username||knownUsername,'text','name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="100" required')}<span class="m">${t('usernameHint')}</span>${button('usernameSave',t('usernameSave'))}${field('password',t(encrypted?'chpw':'setpw'),'','password','name="password" autocomplete="new-password" minlength="10" required')}${field('repeat',t('repeat'),'','password','name="confirmPassword" autocomplete="new-password" minlength="10" required')}<button class="b2" type="submit">${t(encrypted?'chpw':'setpw')}</button></form>${encrypted||S.pw?button('lock',t('lock')):''}</div>${backupStatus()}<div class="c"><h2>${t('exp')}</h2><label class="f"><span class="m">${t('backupPassword')}</span><input class="i" type="password" data-g="enc" value="${esc(GC.enc||'')}" autocomplete="off"></label><span class="m">${t('plainBackup')}</span><span class="m">${t('backupNote')}</span><div class="s">${button('export',t('expb'))}${button('csv',t('expc'))}</div>${button('import',t('imp'))}${button('share',t('share'))}<input type="file" id="import-file" accept=".json,application/json" hidden></div><div class="c"><h2>${t('gh')}</h2><span class="m">${t('ghHelp')}</span><span class="m">${t('ghPrivate')}</span><label class="f"><span class="m">${t('ghTok')}</span><input class="i" type="password" data-g="tok" value="${esc(GC.tok||'')}" autocomplete="off"></label><label class="f"><span class="m">${t('ghRepo')}</span><input class="i" data-g="repo" value="${esc(GC.repo||'')}" placeholder="Besitzer/Repository" autocomplete="off"></label><label class="f"><span class="m">${t('ghFile')}</span><input class="i" data-g="file" value="${esc(GC.file||'schulden-backup.json')}" autocomplete="off"></label><div class="s">${button('ghup',t('up'))}${button('ghdn',t('dn'))}</div>${button('saveAccess',t('saveAccess'))}</div>${P.backups.length?`<div class="c"><h2>${t('recovery')}</h2>${P.backups.map(r=>`<div class="history"><div><b>${esc(t(r.label))}</b><span class="m">${esc(dt(r.at))}</span></div><div class="w">${button('recoveryExport',t('export'),`data-rid="${r.id}"`,'q')}${button('recoveryRestore',t('restore'),`data-rid="${r.id}"`,'q')}${button('recoveryDelete',t('remove'),`data-rid="${r.id}"`,'q')}</div></div>`).join('')}</div>`:''}<span class="m">${t('version')}</span>`;}
+function lockView(){const initial=!S.setup&&!encrypted;return `<h1>Schulden-Manager</h1><div class="w">${['DE','EN','FR'].map((x,i)=>button('lockLanguage',x,`data-lang="${i}"`,'q')).join('')}</div><form id="login-form" class="c" method="post" autocomplete="on"><p>${t(initial?'setupHelp':encrypted?'lockHelp':'legacy')}</p>${field('username',t('username'),knownUsername,'text',`id="login-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="100" ${initial||knownUsername?'required':''}`)}${!initial&&!knownUsername?`<span class="m">${t('legacyUsername')}</span>`:''}${field('password',t('pw'),'','password',`id="login-password" name="password" autocomplete="${initial?'new-password':'current-password'}" required`)}${initial?field('repeat',t('repeat'),'','password','id="login-confirm-password" name="confirmPassword" autocomplete="new-password" minlength="10" required'):''}${initial?`<span class="m">${t('passwordHelp')}</span>`:''}<button class="b" type="submit">${t(initial?'loginSetup':'login')}</button>${initial?button('skip',t('skip')):''}</form>`;}
+
 function conflictView(){const {remote}=V.conflict;return `${back()}<h1>${t('conflict')}</h1><p>${t('conflictHelp')}</p><div class="s"><div class="c"><b>${t('local')}</b><span>${S.people.length} ${t('ppl')} · ${S.debts.length} ${t('debts')}</span><span class="m">${esc(dt(S.ts))}</span></div><div class="c"><b>${t('online')}</b><span>${remote.people.length} ${t('ppl')} · ${remote.debts.length} ${t('debts')}</span><span class="m">${esc(dt(remote.ts))}</span></div></div>${button('conflictLocal',t('useLocal'),'','b')}${button('conflictOnline',t('useOnline'))}${button('back',t('cancel'))}`;}
 function render(){
   sync();let h;
@@ -130,7 +145,7 @@ function render(){
     h+=`<nav aria-label="Navigation"><div>${[['home','ov'],['debts','debts'],['ppl','ppl'],['set','set']].map(([v,l])=>button('nav',t(l),`data-view="${v}" ${V.v===v?'aria-current="page"':''}`,V.v===v?'on':'')).join('')}</div></nav>`;
   }
   $('#app').innerHTML=banner()+h;document.documentElement.lang=['de','en','fr'][L];
-  if(busy)$('#app').querySelectorAll('button,input,select').forEach(e=>e.disabled=true);
+  if(busy)$('#app').querySelectorAll('button,input,select').forEach(e=>{if(!e.matches('input')||!e.closest('#login-form,#credentials-form'))e.disabled=true;});
 }
 function nameCheck(name,except){name=String(name||'').trim();if(!name||name.length>200)throw Error('nameError');if(S.people.some(p=>p.id!==except&&p.name.toLocaleLowerCase(LC[L])===name.toLocaleLowerCase(LC[L])))throw Error('duplicate');return name;}
 function parseAmount(value,zero=false){const n=C.money(value,L);if(!zero&&n<=0)throw Error('positive');return n;}
@@ -174,7 +189,7 @@ async function legacyHash(p){const bytes=await crypto.subtle.digest('SHA-256',ne
 function normalizeBody(body){
   if(!body||!body.state)throw Error('formatError');
   const data=C.validate(body.state,true);
-  const state={...data,lang:[0,1,2].includes(body.state.lang)?body.state.lang:0,setup:!!body.state.setup,pw:typeof body.state.pw==='string'?body.state.pw:null};
+  const state={...data,username:username(body.state.username||'',false),lang:[0,1,2].includes(body.state.lang)?body.state.lang:0,setup:!!body.state.setup,pw:typeof body.state.pw==='string'?body.state.pw:null};
   const settings={};for(const k of ['tok','repo','file','enc'])if(typeof body.settings?.[k]==='string')settings[k]=body.settings[k].slice(0,2000);
   if(body.backups&&!Array.isArray(body.backups))throw Error('formatError');
   const backups=(body.backups||[]).map(r=>{if(!r||typeof r.id!=='string'||typeof r.at!=='number')throw Error('formatError');return {id:r.id,at:r.at,label:r.label==='savedOnline'?'savedOnline':'savedLocal',data:C.validate(r.data,true)};});
@@ -184,17 +199,21 @@ function normalizeBody(body){
 async function setPassword(initial){
   const password=V.f?.password||'',repeat=V.f?.repeat||'';
   if(password.length<10||password!==repeat)throw Error('passwordError');
+  const name=username(V.f?.username??S.username??knownUsername,initial||V.f?.username!==undefined);
   const old=clone(P),oldSecret=secret;
-  try{S.setup=true;S.pw=null;await write(P,password);secret=password;locked=false;sync();V={v:initial?'home':'set',f:{}};message=t('saved');}
+  try{S.setup=true;S.pw=null;S.username=name;await write(P,password);secret=password;locked=false;sync();V={v:initial?'home':'set',f:{}};message=t('saved');}
   catch(e){P=old;secret=oldSecret;sync();throw e;}
 }
 async function unlock(){
   const password=V.f?.password||'';
+  const name=username(V.f?.username||'',false),before={P:clone(P),secret,locked};
   if(encrypted){
     const source=storageValue();let next;try{const record=JSON.parse(source);next=normalizeBody(JSON.parse(await C.decrypt(record.payload,password)));}catch(e){throw Error('bad');}
     if(storageValue()!==source)throw Error('concurrent');
+    if(next.state.username&&!sameUsername(name,next.state.username))throw Error('bad');
     P=next;secret=password;sync();locked=false;disk=source;
-  }else {if(await legacyHash(password)!==S.pw)throw Error('bad');locked=false;}
+  }else {if((S.username&&!sameUsername(name,S.username))||await legacyHash(password)!==S.pw)throw Error('bad');locked=false;}
+  if(!S.username&&name){try{S.username=name;await write();}catch(e){({P,secret,locked}=before);sync();throw e;}}
   V={v:'home'};failure='';message='';
 }
 function lockNow(){secret='';GC.tok='';GC.enc='';locked=true;V={v:'home'};failure='';message='';if(encrypted){P=empty();P.state.setup=true;sync();}render();}
@@ -296,6 +315,7 @@ async function action(a,D){
     case 'undo':{if(!P.undo)break;const before=clone(P);try{const data=P.undo.data;S.people=clone(data.people);S.debts=clone(data.debts);S.ts=Date.now();P.undo=null;await write();V={v:'home'};message=t('saved');}catch(e){P=before;sync();throw e;}break;}
     case 'language':await savePreferences(()=>{S.lang=+D.lang;});break;
     case 'lockLanguage':L=+D.lang;S.lang=L;break;
+    case 'usernameSave':{const input=$('#credentials-form [name="username"]');const name=username(input?.value??V.f?.username);await savePreferences(()=>{S.username=name;});message=t('saved');break;}
     case 'password':await setPassword(false);break;
     case 'setupPassword':await setPassword(true);break;
     case 'skip':await savePreferences(()=>{S.setup=true;});V={v:'home'};break;
@@ -317,7 +337,7 @@ async function action(a,D){
 }
 async function run(work){
   if(busy)return;busy=true;failure='';message='';
-  $('#app').querySelectorAll('button,input,select').forEach(e=>e.disabled=true);
+  $('#app').querySelectorAll('button,input,select').forEach(e=>{if(!e.matches('input')||!e.closest('#login-form,#credentials-form'))e.disabled=true;});
   try{await work();}catch(e){failure=T[e.message]?t(e.message):t('ghErr')+': '+(e.name==='AbortError'?'Timeout':e.message||e);}
   finally{busy=false;if(lockAfter){lockAfter=false;lockNow();}else render();}
 }
@@ -333,14 +353,14 @@ document.addEventListener('change',e=>{
   if(e.target.dataset.g)return;
   if(['pid','ch','dir','status','mode'].includes(e.target.dataset.f)){V.f[e.target.dataset.f]=e.target.value;render();}
 });
-document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.dataset.f==='password'&&locked){e.preventDefault();run(unlock);}});
+document.addEventListener('submit',e=>{if(!['login-form','credentials-form'].includes(e.target.id))return;e.preventDefault();const form=e.target;V.f=V.f||{};for(const name of ['username','password'])V.f[name]=form.elements.namedItem(name)?.value||'';V.f.repeat=form.elements.namedItem('confirmPassword')?.value||'';run(()=>form.id==='credentials-form'?setPassword(false):(!S.setup&&!encrypted)?setPassword(true):unlock());});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&(encrypted||S.pw)){if(busy)lockAfter=true;else if(configDirty){lockAfter=true;run(async()=>{await savePreferences(()=>{});configDirty=false;});}else lockNow();}});
 window.addEventListener('offline',()=>render());window.addEventListener('online',()=>render());
 window.addEventListener('storage',e=>{if(e.key===KEY&&e.newValue!==disk){failure=t('concurrent');if(encrypted&&!busy)lockNow();else render();}});
 async function init(){
   try{
     disk=storageValue();
-    if(disk){const record=JSON.parse(disk);if(record.version!==4)throw Error('formatError');encrypted=record.encrypted===true;if(encrypted){locked=true;P.state.setup=true;}else{P=normalizeBody(record.data);sync();locked=!!S.pw;}}
+    if(disk){const record=JSON.parse(disk);if(record.version!==4)throw Error('formatError');knownUsername=username(record.username||'',false);encrypted=record.encrypted===true;if(encrypted){locked=true;P.state.setup=true;}else{P=normalizeBody(record.data);sync();locked=!!S.pw;}}
     else {
       const legacy=localStorage.getItem('sm');
       if(legacy){const old=JSON.parse(legacy),valid=C.validate(old,true);P.state={...valid,lang:old.lang||0,setup:!!old.setup,pw:old.pw||null};try{P.settings=JSON.parse(localStorage.getItem('smgh')||'{}');}catch(e){P.settings={};}sync();locked=!!S.pw;}
